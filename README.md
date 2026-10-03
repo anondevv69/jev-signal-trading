@@ -89,7 +89,10 @@ Anyone in a monitored chat can post a thesis:
 ```
 
 Long call-intent messages (200+ chars) are also ingested as implicit bull
-theses; long warnings as bear theses. Every thesis is graded retroactively
+theses; long warnings as bear theses. **Reply nominations**: reply to any
+post with `/thesis`, `+thesis`, or `thesis this` and the *original* post
+becomes a thesis attributed to its author — no need to rewrite someone
+else's analysis. Every thesis is graded retroactively
 (24h, ±15% decides correct/wrong) and author accuracy feeds back into Jev's
 judgment input. Spam defense is reputation: anyone can write, only scored
 authors move the Noul.
