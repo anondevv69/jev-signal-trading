@@ -163,6 +163,7 @@ def poll_once(cfg, database: dbmod.Database, timeout=TIMEOUT):
                     "platform": "telegram",
                     "chat_id": chat_id,
                     "reply_msg_id": mid,
+                    "reply_text": text,
                     "nominator_user_id": user_id,
                     "nominator_username": username,
                     "direction": direction,
