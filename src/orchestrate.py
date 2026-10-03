@@ -94,8 +94,10 @@ def run():
         # linked mentions (e.g. a past run stored the message but dropped the
         # candidate) gets processed through the normal path. Cheap: one query.
         n_healed = _backfill_missed(database)
-        # Reply nominations: "thesis this" replies attach the ORIGINAL post
-        # as a thesis attributed to its author.
+        # Reply nominations: the reply MUST carry the contract address
+        # (disambiguates when the original mentions several tokens). The
+        # thesis is attributed to the ORIGINAL author; the stored body is
+        # the original post.
         n_noms = 0
         for nom in t_noms + d_noms:
             try:
@@ -112,7 +114,7 @@ def run():
                     nom["orig_user_id"], nom["orig_username"],
                     nom["orig_text"], direction, ts=nom.get("ts"),
                     message_id=None,
-                    fallback_text=nom.get("reply_text", ""))
+                    candidate_text=nom.get("reply_text", ""))
             except Exception as e:
                 print(f"orchestrate: nomination failed ({e})", file=sys.stderr)
         # Retroactive thesis scoring (max 10 intel lookups per run).
