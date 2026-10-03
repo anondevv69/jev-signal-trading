@@ -30,6 +30,11 @@ CORRECT_RET = 0.15
 
 THESIS_CMD_RE = re.compile(r"^\s*/thesis\b", re.IGNORECASE)
 DIR_WORD_RE = re.compile(r"^\s*/thesis\s+(bull(?:ish)?|bear(?:ish)?)\b", re.IGNORECASE)
+# reply-based nomination: replying to a post with one of these attaches the
+# ORIGINAL post as a thesis (attributed to its author)
+NOMINATION_RE = re.compile(
+    r"^\s*(?:/thesis\b|\+thesis\b|thesis\s+this\b|"
+    r"make\s+this\s+a\s+thesis\b)", re.IGNORECASE)
 BEAR_HINT_RE = re.compile(
     r"\b(bear(?:ish)?|short(?:ing)?|avoid|rug(?:ged|pull)?|dump(?:ing)?|"
     r"sell|scam|ponzi|honeypot|stay away|do not buy|don't buy)\b", re.IGNORECASE)
@@ -63,6 +68,20 @@ def detect(text, intent):
         if intent == "warning":
             return "bear"
     return None
+
+
+def parse_nomination(reply_text):
+    """Is this reply a thesis nomination? Returns (is_nomination, direction).
+
+    direction is explicit only when the reply says so (e.g. `/thesis bear`
+    as a reply); otherwise None and the caller infers from the original.
+    """
+    if not reply_text or not NOMINATION_RE.match(reply_text):
+        return False, None
+    if THESIS_CMD_RE.match(reply_text):
+        direction, _ = parse_command(reply_text)
+        return True, direction
+    return True, None
 
 
 def _thesis_body(text):
