@@ -33,7 +33,7 @@ def _parse_ts(iso):
 
 
 def poll_channel(auth_headers, channel_id, database: dbmod.Database):
-    """Poll one channel. Returns (stored, candidates)."""
+    """Poll one channel. Returns (stored, candidates, nominations)."""
     key = f"discord:last_id:{channel_id}"
     last_id = database.get_state(key, "0") or "0"
     try:
@@ -46,12 +46,12 @@ def poll_channel(auth_headers, channel_id, database: dbmod.Database):
     except Exception as e:
         print(f"discord:{channel_id}: request failed (fail-open): {e}",
               file=sys.stderr)
-        return 0, []
+        return 0, [], [], []
     if r.status_code == 429:
         retry = r.headers.get("Retry-After", "?")
         print(f"discord:{channel_id}: rate-limited, retry after {retry}s "
               f"(fail-open)", file=sys.stderr)
-        return 0, []
+        return 0, [], [], []
     if r.status_code == 403:
         print(f"discord:{channel_id}: 403 - bot lacks access to this channel "
               f"(fail-open, skipping 24h)", file=sys.stderr)
@@ -59,14 +59,15 @@ def poll_channel(auth_headers, channel_id, database: dbmod.Database):
             discovermod.mark_denied(database, channel_id)
         except Exception:
             pass
-        return 0, []
+        return 0, [], [], []
     if not r.ok:
         print(f"discord:{channel_id}: HTTP {r.status_code} (fail-open)",
               file=sys.stderr)
-        return 0, []
+        return 0, [], [], []
 
     stored = 0
     candidates = []
+    nominations = []
     max_id = int(last_id)
     for msg in reversed(r.json()):  # oldest first
         mid_int = int(msg["id"])
@@ -81,6 +82,24 @@ def poll_channel(auth_headers, channel_id, database: dbmod.Database):
             text, _parse_ts(msg.get("timestamp", "")),
         )
         stored += 1
+        ref = msg.get("referenced_message")
+        if isinstance(ref, dict) and ref.get("content"):
+            from . import theses as thesesmod
+            is_nom, direction = thesesmod.parse_nomination(text)
+            if is_nom:
+                rauthor = ref.get("author", {})
+                nominations.append({
+                    "platform": "discord",
+                    "chat_id": channel_id,
+                    "reply_msg_id": db_id,
+                    "nominator_user_id": author.get("id", ""),
+                    "nominator_username": author.get("username", ""),
+                    "direction": direction,
+                    "orig_text": ref.get("content", ""),
+                    "orig_user_id": rauthor.get("id", ""),
+                    "orig_username": rauthor.get("username", ""),
+                    "ts": _parse_ts(msg.get("timestamp", "")),
+                })
         for cand in extractmod.extract_candidates(text):
             candidates.append({
                 "platform": "discord",
@@ -92,11 +111,11 @@ def poll_channel(auth_headers, channel_id, database: dbmod.Database):
             })
     if max_id > int(last_id):
         database.set_state(key, str(max_id))
-    return stored, candidates
+    return stored, candidates, nominations
 
 
 def poll_once(cfg, database: dbmod.Database):
-    """Poll all watched channels. Returns (stored, candidates, new_chats).
+    """Poll all watched channels. Returns (stored, candidates, new_chats, nominations).
 
     Channel set = DISCORD_CHANNEL_IDS (explicit) UNION every readable
     text channel in every guild the bot is in (auto-discovered, cached
@@ -115,7 +134,7 @@ def poll_once(cfg, database: dbmod.Database):
         else:
             print(f"discord: no credential available ({e}), skipping",
                   file=sys.stderr)
-            return 0, [], []
+            return 0, [], [], []
     # Auto-discovery: every text channel in every guild the bot is in.
     # Explicit DISCORD_CHANNEL_IDS are kept as well (union).
     channels, new_chats = discovermod.discover_discord_channels(
@@ -131,21 +150,22 @@ def poll_once(cfg, database: dbmod.Database):
     if not channels:
         print("discord: no channels (not in any guild / all denied), "
               "skipping", file=sys.stderr)
-        return 0, [], []
-    total_stored, all_cands = 0, []
+        return 0, [], [], []
+    total_stored, all_cands, all_noms = 0, [], []
     for ch, _label in channels:
-        stored, cands = poll_channel(auth_headers, ch, database)
+        stored, cands, noms = poll_channel(auth_headers, ch, database)
         total_stored += stored
         all_cands.extend(cands)
-    return total_stored, all_cands, new_chats
+        all_noms.extend(noms)
+    return total_stored, all_cands, new_chats, all_noms
 
 
 def main():
     from . import config as cfgmod
     cfg = cfgmod.load()
     database = dbmod.Database(cfg.db_path)
-    stored, cands, new_chats = poll_once(cfg, database)
-    print(f"discord: stored={stored} candidates={len(cands)}")
+    stored, cands, new_chats, noms = poll_once(cfg, database)
+    print(f"discord: stored={stored} candidates={len(cands)} nominations={len(noms)}")
     for cid, label in new_chats:
         print(f"discord: NEW CHANNEL discovered: {label} ({cid})")
     database.close()
