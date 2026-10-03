@@ -93,23 +93,25 @@ def _thesis_body(text):
 
 
 def ingest_thesis(database, platform, chat_id, user_id, username, text,
-                  direction, ts=None, message_id=None, fallback_text=""):
+                  direction, ts=None, message_id=None, candidate_text=None):
     """Record a thesis for each token candidate in the text. Returns count.
 
     Idempotent-ish: skips if this author already has a thesis on the token
     within the last 24h. Captures price_at_thesis via intel when available.
-    If the text has no token candidates, candidates are extracted from
-    fallback_text instead (e.g. a nomination reply carrying the CA while the
-    original post only had a cashtag). Never raises.
+    candidate_text overrides where token candidates come from (used by reply
+    nominations: the nominator's reply MUST carry the contract address; the
+    stored thesis body is still the original post). If the candidate source
+    has no address-bearing candidates, nothing is recorded. Never raises.
     """
     ts = int(ts if ts is not None else time.time())
     body = _thesis_body(text)
     if not body:
         return 0
     n = 0
-    cands = extractmod.extract_candidates(body)
-    if not cands and fallback_text:
-        cands = extractmod.extract_candidates(fallback_text)
+    cands = extractmod.extract_candidates(
+        candidate_text if candidate_text is not None else body)
+    # only address-bearing candidates count (cashtags are hints, not tokens)
+    cands = [c for c in cands if c.get("address")]
     for cand in cands:
         try:
             norm = fsmod.normalize_token_id(cand.get("chain", "evm"),
