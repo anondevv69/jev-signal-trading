@@ -111,7 +111,8 @@ def run():
                     database, nom["platform"], nom["chat_id"],
                     nom["orig_user_id"], nom["orig_username"],
                     nom["orig_text"], direction, ts=nom.get("ts"),
-                    message_id=None)
+                    message_id=None,
+                    fallback_text=nom.get("reply_text", ""))
             except Exception as e:
                 print(f"orchestrate: nomination failed ({e})", file=sys.stderr)
         # Retroactive thesis scoring (max 10 intel lookups per run).
