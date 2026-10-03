@@ -92,6 +92,7 @@ def poll_channel(auth_headers, channel_id, database: dbmod.Database):
                     "platform": "discord",
                     "chat_id": channel_id,
                     "reply_msg_id": db_id,
+                    "reply_text": text,
                     "nominator_user_id": author.get("id", ""),
                     "nominator_username": author.get("username", ""),
                     "direction": direction,
