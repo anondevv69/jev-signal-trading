@@ -31,8 +31,8 @@ def run():
     database = dbmod.Database(cfg.db_path)
     t0 = time.time()
     try:
-        t_stored, t_cands, t_new = ingest_telegram.poll_once(cfg, database)
-        d_stored, d_cands, d_new = ingest_discord.poll_once(cfg, database)
+        t_stored, t_cands, t_new, t_noms = ingest_telegram.poll_once(cfg, database)
+        d_stored, d_cands, d_new, d_noms = ingest_discord.poll_once(cfg, database)
         candidates = t_cands + d_cands
         for cid, title in t_new:
             print(f"orchestrate: NEW telegram chat: {title} ({cid})")
@@ -94,6 +94,26 @@ def run():
         # linked mentions (e.g. a past run stored the message but dropped the
         # candidate) gets processed through the normal path. Cheap: one query.
         n_healed = _backfill_missed(database)
+        # Reply nominations: "thesis this" replies attach the ORIGINAL post
+        # as a thesis attributed to its author.
+        n_noms = 0
+        for nom in t_noms + d_noms:
+            try:
+                direction = nom.get("direction")
+                if not direction:
+                    try:
+                        orig_intent = intentsmod.classify(nom["orig_text"])
+                    except Exception:
+                        orig_intent = "neutral"
+                    direction = (thesesmod.detect(nom["orig_text"], orig_intent)
+                                 or "bull")
+                n_noms += thesesmod.ingest_thesis(
+                    database, nom["platform"], nom["chat_id"],
+                    nom["orig_user_id"], nom["orig_username"],
+                    nom["orig_text"], direction, ts=nom.get("ts"),
+                    message_id=None)
+            except Exception as e:
+                print(f"orchestrate: nomination failed ({e})", file=sys.stderr)
         # Retroactive thesis scoring (max 10 intel lookups per run).
         try:
             n_scored = thesesmod.score_theses(database)
@@ -104,6 +124,7 @@ def run():
         print(f"orchestrate: stored={t_stored + d_stored} "
               f"candidates={len(candidates)} calls={n_calls} "
               f"first_seen={n_first_seen} healed={n_healed} "
+              f"nominations={n_noms} "
               f"theses_scored={n_scored} ({dt:.1f}s)")
     finally:
         database.close()
